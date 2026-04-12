@@ -1,0 +1,342 @@
+###############################################################
+#  AppAssault Lab — Attacking Common Applications
+#  11 vulnerable applications for exploitation practice
+#
+#  Network: appnet (10.30.10.0/24)
+#  Ports: 9001-9015 (one per app) + 9099 (scoreboard)
+#
+#  Setup: cp .env.example .env && docker compose up -d
+###############################################################
+
+networks:
+  appnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.30.10.0/24
+
+services:
+
+  # ══════════════════════════════════════════
+  #  CMS — Content Management Systems
+  # ══════════════════════════════════════════
+
+  wordpress:
+    image: wordpress:5.6-apache
+    container_name: aa-wordpress
+    hostname: wordpress
+    environment:
+      - WORDPRESS_DB_HOST=wordpress-db
+      - WORDPRESS_DB_USER=wp_user
+      - WORDPRESS_DB_PASSWORD=${WP_DB_PASSWORD}
+      - WORDPRESS_DB_NAME=wordpress
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.10
+    ports:
+      - "9001:80"
+    depends_on:
+      - wordpress-db
+    restart: unless-stopped
+
+  wordpress-db:
+    image: mysql:5.7
+    container_name: aa-wordpress-db
+    hostname: wordpress-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=${WP_DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=wordpress
+      - MYSQL_USER=wp_user
+      - MYSQL_PASSWORD=${WP_DB_PASSWORD}
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.11
+    restart: unless-stopped
+
+  wordpress-setup:
+    build: ./wordpress
+    container_name: aa-wordpress-setup
+    environment:
+      - WP_ADMIN_PASSWORD=${WP_ADMIN_PASSWORD}
+      - WP_DB_PASSWORD=${WP_DB_PASSWORD}
+      - WP_DB_ROOT_PASSWORD=${WP_DB_ROOT_PASSWORD}
+      - FLAG_WORDPRESS=${FLAG_WORDPRESS}
+    depends_on:
+      - wordpress
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.12
+    restart: "no"
+
+  joomla:
+    image: joomla:4.2.7-apache
+    container_name: aa-joomla
+    hostname: joomla
+    environment:
+      - JOOMLA_DB_HOST=joomla-db
+      - JOOMLA_DB_USER=joomla_user
+      - JOOMLA_DB_PASSWORD=${JOOMLA_DB_PASSWORD}
+      - JOOMLA_DB_NAME=joomla
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.20
+    ports:
+      - "9002:80"
+    depends_on:
+      - joomla-db
+    restart: unless-stopped
+
+  joomla-db:
+    image: mysql:5.7
+    container_name: aa-joomla-db
+    hostname: joomla-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=${FLAG_JOOMLA}
+      - MYSQL_DATABASE=joomla
+      - MYSQL_USER=joomla_user
+      - MYSQL_PASSWORD=${JOOMLA_DB_PASSWORD}
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.21
+    restart: unless-stopped
+
+  joomla-setup:
+    build: ./joomla
+    container_name: aa-joomla-setup
+    environment:
+      - JOOMLA_DB_PASSWORD=${JOOMLA_DB_PASSWORD}
+      - FLAG_JOOMLA=${FLAG_JOOMLA}
+      - GITEA_ADMIN_PASSWORD=${GITEA_ADMIN_PASSWORD}
+    depends_on:
+      - joomla
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.22
+    restart: "no"
+
+  gitea:
+    image: gitea/gitea:1.19.3
+    container_name: aa-gitea
+    hostname: gitea
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__server__ROOT_URL=http://localhost:9003
+      - GITEA__service__DISABLE_REGISTRATION=false
+    volumes:
+      - gitea-data:/data
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.30
+    ports:
+      - "9003:3000"
+    restart: unless-stopped
+
+  gitea-setup:
+    build: ./gitea
+    container_name: aa-gitea-setup
+    environment:
+      - GITEA_ADMIN_PASSWORD=${GITEA_ADMIN_PASSWORD}
+      - FLAG_GITEA=${FLAG_GITEA}
+    depends_on:
+      - gitea
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.31
+    restart: "no"
+
+  # ══════════════════════════════════════════
+  #  Servlet Containers & DevOps
+  # ══════════════════════════════════════════
+
+  tomcat:
+    build: ./tomcat
+    container_name: aa-tomcat
+    hostname: tomcat
+    environment:
+      - FLAG=${FLAG_TOMCAT}
+    command: sh -c 'echo "$$FLAG" > /flag.txt && chmod 644 /flag.txt && catalina.sh run'
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.40
+    ports:
+      - "9004:8080"
+      - "9009:8009"
+    restart: unless-stopped
+
+  jenkins:
+    build: ./jenkins
+    container_name: aa-jenkins
+    hostname: jenkins
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - FLAG_JENKINS=${FLAG_JENKINS}
+      - JENKINS_DEPLOY_PASSWORD=${JENKINS_DEPLOY_PASSWORD}
+      - GITLAB_ROOT_PASSWORD=${GITLAB_ROOT_PASSWORD}
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.50
+    ports:
+      - "9005:8080"
+    restart: unless-stopped
+
+  gitlab:
+    image: gitlab/gitlab-ce:13.10.2-ce.0
+    container_name: aa-gitlab
+    hostname: gitlab
+    environment:
+      - GITLAB_OMNIBUS_CONFIG=external_url 'http://localhost:9006'; nginx['listen_port'] = 80; nginx['listen_https'] = false; gitlab_rails['initial_root_password'] = '${GITLAB_ROOT_PASSWORD}';
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.60
+    ports:
+      - "9006:80"
+    shm_size: '256m'
+    restart: unless-stopped
+
+  gitlab-setup:
+    build: ./gitlab
+    container_name: aa-gitlab-setup
+    environment:
+      - GITLAB_ROOT_PASSWORD=${GITLAB_ROOT_PASSWORD}
+      - FLAG_GITLAB=${FLAG_GITLAB}
+      - WP_ADMIN_PASSWORD=${WP_ADMIN_PASSWORD}
+    depends_on:
+      - gitlab
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.61
+    restart: "no"
+
+  # ══════════════════════════════════════════
+  #  Infrastructure & Monitoring
+  # ══════════════════════════════════════════
+
+  splunk:
+    build: ./splunk
+    container_name: aa-splunk
+    hostname: splunk
+    environment:
+      - SPLUNK_START_ARGS=--accept-license
+      - SPLUNK_PASSWORD=${SPLUNK_PASSWORD}
+      - FLAG=${FLAG_SPLUNK}
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.70
+    ports:
+      - "9007:8000"
+    restart: unless-stopped
+
+  # ══════════════════════════════════════════
+  #  CGI & Legacy
+  # ══════════════════════════════════════════
+
+  apache-cgi:
+    build: ./apache-cgi
+    container_name: aa-apache-cgi
+    hostname: apache-cgi
+    environment:
+      - FLAG=${FLAG_APACHE}
+    command: sh -c 'echo "$$FLAG" > /flag.txt && chmod 644 /flag.txt && httpd-foreground'
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.80
+    ports:
+      - "9012:80"
+    restart: unless-stopped
+
+  shellshock:
+    build: ./shellshock
+    container_name: aa-shellshock
+    hostname: shellshock
+    environment:
+      - FLAG=${FLAG_SHELLSHOCK}
+    command: sh -c 'echo "$$FLAG" > /flag.txt && chmod 644 /flag.txt && apachectl -D FOREGROUND'
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.81
+    ports:
+      - "9013:80"
+    restart: unless-stopped
+
+  # ══════════════════════════════════════════
+  #  Data & Services
+  # ══════════════════════════════════════════
+
+  phpmyadmin:
+    build: ./phpmyadmin
+    container_name: aa-phpmyadmin
+    hostname: phpmyadmin
+    environment:
+      - PMA_HOST=wordpress-db
+      - PMA_USER=root
+      - PMA_PASSWORD=${WP_DB_ROOT_PASSWORD}
+      - FLAG=${FLAG_PHPMYADMIN}
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.90
+    ports:
+      - "9014:80"
+    depends_on:
+      - wordpress-db
+    restart: unless-stopped
+
+  openldap:
+    build: ./openldap
+    container_name: aa-openldap
+    hostname: openldap
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.100
+    ports:
+      - "9015:389"
+    restart: unless-stopped
+
+  ldap-seed:
+    build: ./ldap-seed
+    container_name: aa-ldap-seed
+    environment:
+      - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD}
+      - FLAG_LDAP=${FLAG_LDAP}
+      - JENKINS_ADMIN_PASSWORD=${JENKINS_ADMIN_PASSWORD}
+      - LDAP_PASS_DEPLOY=${LDAP_PASS_DEPLOY}
+      - LDAP_PASS_JOHN=${LDAP_PASS_JOHN}
+      - LDAP_PASS_MARY=${LDAP_PASS_MARY}
+      - LDAP_PASS_DAVID=${LDAP_PASS_DAVID}
+    depends_on:
+      - openldap
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.101
+    restart: "no"
+
+  # ══════════════════════════════════════════
+  #  Scoreboard
+  # ══════════════════════════════════════════
+
+  scoreboard:
+    build: ./scoreboard
+    container_name: aa-scoreboard
+    hostname: scoreboard
+    environment:
+      - FLAG_WORDPRESS=${FLAG_WORDPRESS}
+      - FLAG_JOOMLA=${FLAG_JOOMLA}
+      - FLAG_GITEA=${FLAG_GITEA}
+      - FLAG_TOMCAT=${FLAG_TOMCAT}
+      - FLAG_JENKINS=${FLAG_JENKINS}
+      - FLAG_GITLAB=${FLAG_GITLAB}
+      - FLAG_SPLUNK=${FLAG_SPLUNK}
+      - FLAG_APACHE=${FLAG_APACHE}
+      - FLAG_SHELLSHOCK=${FLAG_SHELLSHOCK}
+      - FLAG_PHPMYADMIN=${FLAG_PHPMYADMIN}
+      - FLAG_LDAP=${FLAG_LDAP}
+    networks:
+      appnet:
+        ipv4_address: 10.30.10.200
+    ports:
+      - "9099:5000"
+    restart: unless-stopped
+
+volumes:
+  gitea-data:

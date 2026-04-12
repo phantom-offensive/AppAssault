@@ -1,0 +1,11 @@
+dn: ou=People,dc=widgetcorp,dc=local
+objectClass: organizationalUnit
+ou: People
+
+dn: ou=Groups,dc=widgetcorp,dc=local
+objectClass: organizationalUnit
+ou: Groups
+
+dn: ou=ServiceAccounts,dc=widgetcorp,dc=local
+objectClass: organizationalUnit
+ou: ServiceAccounts
