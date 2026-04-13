@@ -81,8 +81,6 @@ docker compose up -d
 
 ---
 
----
-
 ## Attack Methodology
 
 For each target:
@@ -104,7 +102,7 @@ For each target:
 - [curl](https://curl.se/) — HTTP client
 - [searchsploit](https://www.exploit-db.com/searchsploit) — Exploit database search
 - [nuclei](https://github.com/projectdiscovery/nuclei) — Vulnerability scanner
-- [pyfuscation](https://github.com/CBHue/PyFuscation) — AJP exploit tools (Ghostcat)
+- [ldapsearch](https://linux.die.net/man/1/ldapsearch) — LDAP enumeration
 
 ---
 
