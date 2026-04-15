@@ -1,22 +1,31 @@
 #!/bin/bash
-# Wait for Joomla and its DB to be ready
+# Joomla setup: wait for auto-install to complete, then seed exploit data
 
-echo "[*] Waiting for Joomla DB..."
-for i in $(seq 1 60); do
-    if curl -sf http://joomla/ > /dev/null 2>&1; then
-        echo "[+] Joomla is responding"
+echo "[*] Waiting for Joomla to be installed and ready..."
+for i in $(seq 1 90); do
+    # Check if Joomla is installed by looking for the API endpoint (not the install wizard)
+    STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://joomla/api/index.php/v1/config/application?public=true 2>/dev/null)
+    if [ "$STATUS" = "200" ]; then
+        echo "[+] Joomla is installed and API is responding"
         break
     fi
+    # Also check if configuration.php exists by seeing if we get redirected to install
+    MAIN_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://joomla/ 2>/dev/null)
+    if [ "$MAIN_STATUS" = "200" ] && [ "$i" -gt 30 ]; then
+        echo "[+] Joomla main page responding (attempt $i)"
+        break
+    fi
+    echo "    Attempt $i/90 - HTTP status: $STATUS (API), $MAIN_STATUS (main) - waiting..."
     sleep 5
 done
 
-sleep 30
+# Extra wait for DB to be fully ready
+sleep 10
 
 # Wait for MySQL to be ready
 echo "[*] Waiting for Joomla MySQL..."
-
 for i in $(seq 1 30); do
-    if mysql -h joomla-db -u joomla_user -p"${JOOMLA_DB_PASSWORD}" joomla -e "SELECT 1" > /dev/null 2>&1; then
+    if mysql --skip-ssl -h joomla-db -u joomla_user -p"${JOOMLA_DB_PASSWORD}" joomla -e "SELECT 1" > /dev/null 2>&1; then
         echo "[+] MySQL is ready"
         break
     fi
@@ -24,7 +33,7 @@ for i in $(seq 1 30); do
 done
 
 # Breadcrumb: add internal notes table with Gitea reference
-mysql -h joomla-db -u joomla_user -p"${JOOMLA_DB_PASSWORD}" joomla << SQL 2>/dev/null
+mysql --skip-ssl -h joomla-db -u joomla_user -p"${JOOMLA_DB_PASSWORD}" joomla << SQL 2>/dev/null
 CREATE TABLE IF NOT EXISTS jml_widget_secrets (
     id INT PRIMARY KEY,
     secret_name VARCHAR(100),

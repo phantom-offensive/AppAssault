@@ -3,17 +3,28 @@
 
 GITLAB_URL="http://gitlab"
 
-echo "[*] Waiting for GitLab to start (this takes 3-5 minutes)..."
+echo "[*] Waiting for GitLab web to start (this takes 3-5 minutes)..."
 for i in $(seq 1 120); do
     HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$GITLAB_URL" 2>/dev/null)
     if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
-        echo "[+] GitLab is responding (HTTP $HTTP_CODE)"
+        echo "[+] GitLab web is responding (HTTP $HTTP_CODE)"
         break
     fi
     sleep 10
 done
 
-sleep 30
+echo "[*] Waiting for GitLab API to be ready..."
+for i in $(seq 1 30); do
+    API_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$GITLAB_URL/api/v4/version" 2>/dev/null)
+    if [ "$API_CODE" = "200" ] || [ "$API_CODE" = "401" ]; then
+        echo "[+] GitLab API is ready (HTTP $API_CODE)"
+        break
+    fi
+    echo "    API not ready yet (attempt $i/30)..."
+    sleep 10
+done
+
+sleep 15
 
 # Get OAuth token
 echo "[*] Getting API token..."

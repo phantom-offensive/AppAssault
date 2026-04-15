@@ -1,18 +1,34 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    apache2 curl \
+    apache2 curl gcc libc6-dev make bison ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable CGI
-RUN a2enmod cgi
+# Download and compile bash 4.3 (vulnerable to CVE-2014-6271 Shellshock)
+RUN curl -fsSL https://ftp.gnu.org/gnu/bash/bash-4.3.tar.gz -o /tmp/bash-4.3.tar.gz && \
+    cd /tmp && tar xzf bash-4.3.tar.gz && \
+    cd bash-4.3 && \
+    ./configure --prefix=/usr && \
+    make -j$(nproc) && \
+    cp bash /bin/bash && \
+    cd / && rm -rf /tmp/bash-4.3*
 
-# Create vulnerable CGI scripts that pass headers to bash eval
+# Verify bash is vulnerable
+RUN env x='() { :;}; echo VULNERABLE' bash -c "echo test" 2>&1 | grep -q VULNERABLE
+
+# Enable CGI and ensure PATH includes /usr/bin for CGI scripts
+RUN a2enmod cgi && \
+    echo 'PassEnv PATH' >> /etc/apache2/apache2.conf
+
+# Create CGI scripts - plain bash scripts.
+# Shellshock triggers because Apache sets HTTP headers (like HTTP_USER_AGENT)
+# as environment variables. Vulnerable bash parses function definitions
+# embedded in env vars and executes trailing commands.
 RUN mkdir -p /usr/lib/cgi-bin && \
-    printf '#!/bin/bash\necho "Content-Type: text/plain"\necho ""\n# VULN: Evaluates User-Agent header unsafely (Shellshock simulation)\nif [ -n "$HTTP_USER_AGENT" ]; then\n  eval "UA=$HTTP_USER_AGENT" 2>/dev/null\nfi\necho "System Status: OK"\necho "Hostname: $(hostname)"\necho "Date: $(date)"\necho "Uptime: $(uptime)"\necho "User-Agent: $HTTP_USER_AGENT"\n' > /usr/lib/cgi-bin/status.cgi && \
+    printf '#!/bin/bash\necho "Content-Type: text/plain"\necho ""\necho "System Status: OK"\necho "Hostname: $(hostname)"\necho "Date: $(date)"\necho "Uptime: $(uptime)"\necho "User-Agent: $HTTP_USER_AGENT"\n' > /usr/lib/cgi-bin/status.cgi && \
     chmod +x /usr/lib/cgi-bin/status.cgi
 
-RUN printf '#!/bin/bash\necho "Content-Type: text/html"\necho ""\necho "<html><body><h2>User Info</h2><pre>"\necho "User: $(whoami)"\necho "ID: $(id)"\n# VULN: Directly executes command from X-Custom header\nif [ -n "$HTTP_X_CUSTOM" ]; then\n  eval "$HTTP_X_CUSTOM" 2>&1\nfi\necho "</pre></body></html>"\n' > /usr/lib/cgi-bin/user.cgi && \
+RUN printf '#!/bin/bash\necho "Content-Type: text/html"\necho ""\necho "<html><body><h2>User Info</h2><pre>"\necho "User: $(whoami)"\necho "ID: $(id)"\necho "</pre></body></html>"\n' > /usr/lib/cgi-bin/user.cgi && \
     chmod +x /usr/lib/cgi-bin/user.cgi
 
 # Breadcrumb: backup config referencing Joomla
